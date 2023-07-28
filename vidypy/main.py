@@ -11,6 +11,7 @@ from telegram.ext import (
 )
 import validators
 import sqlite3
+import tempfile
 
 # Enable logging
 logging.basicConfig(
@@ -33,39 +34,12 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     """Download and send the video to the user."""
     message = update.message
 
-    # Check if the message contains a Twitter link
-    if "twitter.com" in message.text:
-        # Check if the user's Twitter cookie is available in the database
-        user_cookie = get_user_twitter_cookie(message.from_user.id)
-        if user_cookie:
-            # Add the Twitter cookie to yt-dlp options
-            ydl_options = {
-                "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4",
-                "outtmpl": "%(title)s.%(ext)s",
-                "cookiefile": user_cookie,
-            }
-        else:
-            # If the cookie is not available, inform the user
-            await context.bot.send_message(
-                chat_id=message.chat_id,
-                text="Twitter cookie not found. Please send a valid cookie using /set_cookie command.",
-            )
-            return
-    else:
-        # For non-Twitter links, use the original ydl_options
-        ydl_options = {
-            "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4",
-            "outtmpl": "%(title)s.%(ext)s",
-        }
-
     video_url = message.text
 
     if not validators.url(video_url):
         error_message = "Please send a valid URL"
         logger.error(error_message)
-        await context.bot.send_message(
-            chat_id=message.chat_id, text=error_message
-        )
+        await context.bot.send_message(chat_id=message.chat_id, text=error_message)
         return
 
     hourglass_message = await context.bot.send_message(
@@ -73,6 +47,22 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     )
 
     try:
+        ydl_options = {
+            "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4",
+            "outtmpl": "%(title)s.%(ext)s",
+        }
+
+        if "twitter.com" in message.text:
+            user_cookie = get_user_twitter_cookie(message.from_user.id)
+            if user_cookie:
+                ydl_options["cookiefile"] = user_cookie
+            else:
+                await context.bot.send_message(
+                    chat_id=message.chat_id,
+                    text="Twitter cookie not found. Please send a valid cookie using /set_cookie command.",
+                )
+                return
+
         with yt_dlp.YoutubeDL(ydl_options) as ydl:
             video_info = ydl.extract_info(video_url, download=True)
             video_path = ydl.prepare_filename(video_info)
@@ -103,16 +93,12 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     except yt_dlp.DownloadError as e:
         error_message = "Failed to download the video."
         logger.error(f"{e}\n{error_message}")
-        await context.bot.send_message(
-            chat_id=message.chat_id, text=error_message
-        )
+        await context.bot.send_message(chat_id=message.chat_id, text=error_message)
 
 
 async def save_cookie(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Save the user's Twitter cookie sent via a text file."""
-    await update.message.reply_text(
-        "Please send the Twitter cookie as a text file."
-    )
+    await update.message.reply_text("Please send the Twitter cookie as a text file.")
 
 
 async def file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -145,7 +131,10 @@ def store_user_twitter_cookie(user_id: int, cookie: str) -> None:
         "CREATE TABLE IF NOT EXISTS user_cookies (user_id INTEGER PRIMARY KEY, cookie TEXT)"
     )
 
-    c.execute("INSERT OR REPLACE INTO user_cookies (user_id, cookie) VALUES (?, ?)", (user_id, cookie))
+    c.execute(
+        "INSERT OR REPLACE INTO user_cookies (user_id, cookie) VALUES (?, ?)",
+        (user_id, cookie),
+    )
 
     conn.commit()
     conn.close()
@@ -162,7 +151,13 @@ def get_user_twitter_cookie(user_id: int) -> str:
     conn.close()
 
     if result:
-        return result[0]
+        temp_dir = tempfile.gettempdir()
+        cookie_file_path = os.path.join(temp_dir, f"{user_id}_twitter_cookie.txt")
+
+        # Write the cookie string to the temporary file
+        with open(cookie_file_path, "w") as file:
+            file.write(result[0])
+        return cookie_file_path
     return ""
 
 
@@ -170,20 +165,20 @@ def main() -> None:
     """Start the bot."""
     # Create the database if it doesn't exist
     if not os.path.exists(DATABASE_FILE):
-        conn = sqlite3.connect(DATABASE_FILE)
-        c = conn.cursor()
-        c.execute(
-            "CREATE TABLE IF NOT EXISTS user_cookies (user_id INTEGER PRIMARY KEY, cookie TEXT)"
-        )
-        conn.commit()
-        conn.close()
+        with sqlite3.connect(DATABASE_FILE) as conn:
+            c = conn.cursor()
+            c.execute(
+                "CREATE TABLE IF NOT EXISTS user_cookies (user_id INTEGER PRIMARY KEY, cookie TEXT)"
+            )
 
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
     if token:
         app = Application.builder().token(token).build()
         app.add_handler(CommandHandler("start", start))
         app.add_handler(CommandHandler("set_cookie", save_cookie))
-        app.add_handler(MessageHandler(filters.Document.TXT, file_handler))  # Handle text file
+        app.add_handler(
+            MessageHandler(filters.Document.TXT, file_handler)
+        )  # Handle text file
         app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download_video))
         app.run_polling(allowed_updates=Update.ALL_TYPES)
 
