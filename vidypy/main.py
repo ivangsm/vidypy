@@ -52,7 +52,7 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             "outtmpl": "%(title)s.%(ext)s",
         }
 
-        if "twitter.com" in message.text:
+        if "twitter.com" in message.text or "x.com" in message.text:
             user_cookie = get_user_twitter_cookie(message.from_user.id)
             if user_cookie:
                 ydl_options["cookiefile"] = user_cookie
