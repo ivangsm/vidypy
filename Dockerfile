@@ -11,10 +11,13 @@ WORKDIR /app
 COPY pyproject.toml poetry.lock /app/
 
 # Install dependencies
-RUN poetry install --no-root --no-dev
+RUN poetry install --no-root --without dev
 
 # Copy the application code
 COPY . /app
+
+# Set up a volume for the directory where user_data.db will be created
+VOLUME /app/data
 
 # Run the application
 CMD ["poetry", "run", "python", "vidypy/main.py"]

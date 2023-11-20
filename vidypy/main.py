@@ -19,8 +19,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Directory where user_data.db will reside in the volume
+VOLUME_DIRECTORY = "/app/data"
 # SQLite database filename
-DATABASE_FILE = "user_data.db"
+DATABASE_FILE = os.path.join(VOLUME_DIRECTORY, "user_data.db")
 
 
 async def start(update, context):
@@ -163,6 +165,10 @@ def get_user_twitter_cookie(user_id: int) -> str:
 
 def main() -> None:
     """Start the bot."""
+    # Create the directory for the database file if it doesn't exist
+    if not os.path.exists(VOLUME_DIRECTORY):
+        os.makedirs(VOLUME_DIRECTORY)
+
     # Create the database if it doesn't exist
     if not os.path.exists(DATABASE_FILE):
         with sqlite3.connect(DATABASE_FILE) as conn:

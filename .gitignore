@@ -178,3 +178,5 @@ pyrightconfig.json
 user_data.db
 
 *.mp4
+
+.DS_Store
