@@ -48,7 +48,7 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     try:
         ydl_options = {
-            "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4",
+            "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
             "outtmpl": "%(title)s.%(ext)s",
         }
 
