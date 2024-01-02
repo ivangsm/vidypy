@@ -52,6 +52,7 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         ydl_options = {
             "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
             "outtmpl": "%(title)s.%(ext)s",
+            "headers": "User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:97.0) Gecko/20100101 Firefox/121.0",
         }
 
         if "twitter.com" in message.text or "x.com" in message.text:
