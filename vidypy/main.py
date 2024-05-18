@@ -66,7 +66,7 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         else:
             await context.bot.send_message(
                 chat_id=message.chat_id,
-                text="Twitter cookie not found. Please send a valid cookie using /set_cookie twitter command.",
+                text="Twitter cookie not found. Please send a valid cookie as twitter.txt.",
             )
             return
 
@@ -77,7 +77,7 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         else:
             await context.bot.send_message(
                 chat_id=message.chat_id,
-                text="Reddit cookie not found. Please send a valid cookie using /set_cookie reddit command.",
+                text="Reddit cookie not found. Please send a valid cookie as reddit.txt.",
             )
             return
 
@@ -112,17 +112,14 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 async def save_cookie(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Save the user's Twitter or Reddit cookie sent via a text file."""
-    command, cookie_type = update.message.text.split()
-    if cookie_type not in {COOKIE_TWITTER, COOKIE_REDDIT}:
-        await update.message.reply_text("Invalid cookie type. Use 'twitter' or 'reddit'.")
-        return
-
-    await update.message.reply_text(f"Please send the {cookie_type} cookie as a text file.")
+    await update.message.reply_text("Please send a cookie file named twitter.txt or reddit.txt with the command /set_cookie.")
 
 async def file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle the received text file."""
     message = update.message
     user_id = message.from_user.id
+    cookie_type = ''
+
     file = await context.bot.get_file(message.document)
     temp_cookie_path = Path(tempfile.gettempdir()) / f"{user_id}_cookie.txt"
     await file.download_to_drive(temp_cookie_path)
@@ -131,12 +128,23 @@ async def file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         cookie_text = f.read()
     temp_cookie_path.unlink()
 
-    command, cookie_type = context.user_data.get('cookie_type', (None, None))
-    if cookie_type in {COOKIE_TWITTER, COOKIE_REDDIT}:
-        store_user_cookie(user_id, cookie_text, cookie_type)
-        await context.bot.send_message(chat_id=message.chat_id, text=f"{cookie_type.capitalize()} cookie has been saved.")
+    if "twitter" in cookie_text:
+        cookie_type = COOKIE_TWITTER
+    elif "reddit" in cookie_text:
+        cookie_type = COOKIE_REDDIT
     else:
-        await context.bot.send_message(chat_id=message.chat_id, text="No cookie type found. Please use the /set_cookie command first.")
+        await context.bot.send_message(
+            chat_id=message.chat_id,
+            text="Please send the Twitter or Reddit cookie as a text file named twitter.txt or reddit.txt.",
+        )
+        return
+
+    store_user_cookie(user_id, cookie_text, cookie_type)
+
+    await context.bot.send_message(
+        chat_id=message.chat_id,
+        text="Cookie has been saved.",
+    )
 
 def store_user_cookie(user_id: int, cookie: str, cookie_type: str) -> None:
     """Store the user's cookie in the SQLite database."""
