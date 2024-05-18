@@ -26,13 +26,15 @@ VOLUME_DIRECTORY = Path("/app/data")
 # SQLite database filename
 DATABASE_FILE = VOLUME_DIRECTORY / "user_data.db"
 
+# Constants for cookie types
+COOKIE_TWITTER = 'twitter'
+COOKIE_REDDIT = 'reddit'
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send a message when the command /start is issued."""
     await update.message.reply_text(
         "Hello! Send me a video link and I'll download and send it to you."
     )
-
 
 async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Download and send the video to the user."""
@@ -45,9 +47,7 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await context.bot.send_message(chat_id=message.chat_id, text=error_message)
         return
 
-    hourglass_message = await context.bot.send_message(
-        chat_id=message.chat_id, text="⏳"
-    )
+    hourglass_message = await context.bot.send_message(chat_id=message.chat_id, text="⏳")
 
     ydl_options = {
         "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
@@ -60,13 +60,24 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     if "x.com" in video_url:
         video_url = video_url.replace("x.com", "twitter.com")
-        user_cookie = get_user_twitter_cookie(message.from_user.id)
+        user_cookie = get_user_cookie(message.from_user.id, COOKIE_TWITTER)
         if user_cookie:
             ydl_options["cookiefile"] = user_cookie
         else:
             await context.bot.send_message(
                 chat_id=message.chat_id,
-                text="Twitter needs a cookie to download videos. Please send a valid cookie txt file using /set_cookie command.",
+                text="Twitter cookie not found. Please send a valid cookie using /set_cookie twitter command.",
+            )
+            return
+
+    if "reddit.com" in video_url:
+        user_cookie = get_user_cookie(message.from_user.id, COOKIE_REDDIT)
+        if user_cookie:
+            ydl_options["cookiefile"] = user_cookie
+        else:
+            await context.bot.send_message(
+                chat_id=message.chat_id,
+                text="Reddit cookie not found. Please send a valid cookie using /set_cookie reddit command.",
             )
             return
 
@@ -99,17 +110,19 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         with suppress(FileNotFoundError):
             video_path.unlink()
 
-
 async def save_cookie(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Save the user's Twitter cookie sent via a text file."""
-    await update.message.reply_text("Please send the Twitter cookie as a txt file.")
+    """Save the user's Twitter or Reddit cookie sent via a text file."""
+    command, cookie_type = update.message.text.split()
+    if cookie_type not in {COOKIE_TWITTER, COOKIE_REDDIT}:
+        await update.message.reply_text("Invalid cookie type. Use 'twitter' or 'reddit'.")
+        return
 
+    await update.message.reply_text(f"Please send the {cookie_type} cookie as a text file.")
 
 async def file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle the received text file."""
     message = update.message
     user_id = message.from_user.id
-
     file = await context.bot.get_file(message.document)
     temp_cookie_path = Path(tempfile.gettempdir()) / f"{user_id}_cookie.txt"
     await file.download_to_drive(temp_cookie_path)
@@ -118,41 +131,36 @@ async def file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         cookie_text = f.read()
     temp_cookie_path.unlink()
 
-    store_user_twitter_cookie(user_id, cookie_text)
+    command, cookie_type = context.user_data.get('cookie_type', (None, None))
+    if cookie_type in {COOKIE_TWITTER, COOKIE_REDDIT}:
+        store_user_cookie(user_id, cookie_text, cookie_type)
+        await context.bot.send_message(chat_id=message.chat_id, text=f"{cookie_type.capitalize()} cookie has been saved.")
+    else:
+        await context.bot.send_message(chat_id=message.chat_id, text="No cookie type found. Please use the /set_cookie command first.")
 
-    await context.bot.send_message(
-        chat_id=message.chat_id,
-        text="Twitter cookie has been saved.",
-    )
-
-
-def store_user_twitter_cookie(user_id: int, cookie: str) -> None:
-    """Store the user's Twitter cookie in the SQLite database."""
+def store_user_cookie(user_id: int, cookie: str, cookie_type: str) -> None:
+    """Store the user's cookie in the SQLite database."""
     with sqlite3.connect(DATABASE_FILE) as conn:
         conn.execute(
-            "CREATE TABLE IF NOT EXISTS user_cookies (user_id INTEGER PRIMARY KEY, cookie TEXT)"
+            "CREATE TABLE IF NOT EXISTS user_cookies (user_id INTEGER, cookie_type TEXT, cookie TEXT, PRIMARY KEY(user_id, cookie_type))"
         )
         conn.execute(
-            "INSERT OR REPLACE INTO user_cookies (user_id, cookie) VALUES (?, ?)",
-            (user_id, cookie),
+            "INSERT OR REPLACE INTO user_cookies (user_id, cookie_type, cookie) VALUES (?, ?, ?)",
+            (user_id, cookie_type, cookie),
         )
         conn.commit()
 
-
-def get_user_twitter_cookie(user_id: int) -> str:
-    """Retrieve the user's Twitter cookie from the SQLite database."""
+def get_user_cookie(user_id: int, cookie_type: str) -> str:
+    """Retrieve the user's cookie from the SQLite database."""
     with sqlite3.connect(DATABASE_FILE) as conn:
-        result = conn.execute(
-            "SELECT cookie FROM user_cookies WHERE user_id=?", (user_id,)
-        ).fetchone()
+        result = conn.execute("SELECT cookie FROM user_cookies WHERE user_id=? AND cookie_type=?", (user_id, cookie_type)).fetchone()
 
     if result:
         temp_dir = Path(tempfile.gettempdir())
-        cookie_file_path = temp_dir / f"{user_id}_twitter_cookie.txt"
+        cookie_file_path = temp_dir / f"{user_id}_{cookie_type}_cookie.txt"
         cookie_file_path.write_text(result[0])
         return str(cookie_file_path)
     return ""
-
 
 def main() -> None:
     """Start the bot."""
@@ -161,7 +169,7 @@ def main() -> None:
     if not DATABASE_FILE.exists():
         with sqlite3.connect(DATABASE_FILE) as conn:
             conn.execute(
-                "CREATE TABLE IF NOT EXISTS user_cookies (user_id INTEGER PRIMARY KEY, cookie TEXT)"
+                "CREATE TABLE IF NOT EXISTS user_cookies (user_id INTEGER, cookie_type TEXT, cookie TEXT, PRIMARY KEY(user_id, cookie_type))"
             )
 
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
@@ -172,7 +180,6 @@ def main() -> None:
         app.add_handler(MessageHandler(filters.Document.TXT, file_handler))
         app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download_video))
         app.run_polling(allowed_updates=Update.ALL_TYPES)
-
 
 if __name__ == "__main__":
     main()
