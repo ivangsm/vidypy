@@ -66,7 +66,7 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         else:
             await context.bot.send_message(
                 chat_id=message.chat_id,
-                text="Twitter cookie not found. Please send a valid cookie as twitter.txt.",
+                text="Twitter cookie not found. Please send a valid cookie as twitter.txt using the /set_cookie command.",
             )
             return
 
@@ -77,7 +77,7 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         else:
             await context.bot.send_message(
                 chat_id=message.chat_id,
-                text="Reddit cookie not found. Please send a valid cookie as reddit.txt.",
+                text="Reddit cookie not found. Please send a valid cookie as reddit.txt using the /set_cookie command.",
             )
             return
 
@@ -112,7 +112,7 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 async def save_cookie(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Save the user's Twitter or Reddit cookie sent via a text file."""
-    await update.message.reply_text("Please send a cookie file named twitter.txt or reddit.txt with the command /set_cookie.")
+    await update.message.reply_text("Please send a cookie file named twitter.txt or reddit.txt.")
 
 async def file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle the received text file."""
