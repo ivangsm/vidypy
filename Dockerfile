@@ -1,5 +1,5 @@
 # Base image with Python and FFmpeg
-FROM python:3.12-alpine
+FROM python:3.11-alpine
 
 # Install FFmpeg
 RUN apk update && apk add --no-cache ffmpeg poetry
