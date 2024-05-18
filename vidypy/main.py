@@ -1,7 +1,7 @@
 import logging
 import os
 import yt_dlp
-from telegram import Update
+from telegram import Update, MenuButtonCommands
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -27,14 +27,27 @@ VOLUME_DIRECTORY = Path("/app/data")
 DATABASE_FILE = VOLUME_DIRECTORY / "user_data.db"
 
 # Constants for cookie types
-COOKIE_TWITTER = 'twitter'
-COOKIE_REDDIT = 'reddit'
+COOKIE_TWITTER = "twitter"
+COOKIE_REDDIT = "reddit"
+
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send a message when the command /start is issued."""
     await update.message.reply_text(
         "Hello! Send me a video link and I'll download and send it to you."
     )
+
+    await context.bot.set_my_commands(
+        commands=[
+            ("/start", "Start/Restart the bot"),
+            ("/set_cookie", "Set your Twitter or Reddit cookie"),
+        ]
+    )
+
+    await context.bot.set_chat_menu_button(
+        update.effective_chat.id, menu_button=MenuButtonCommands()
+    )
+
 
 async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Download and send the video to the user."""
@@ -47,7 +60,9 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await context.bot.send_message(chat_id=message.chat_id, text=error_message)
         return
 
-    hourglass_message = await context.bot.send_message(chat_id=message.chat_id, text="⏳")
+    hourglass_message = await context.bot.send_message(
+        chat_id=message.chat_id, text="⏳"
+    )
 
     ydl_options = {
         "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
@@ -110,15 +125,19 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         with suppress(FileNotFoundError):
             video_path.unlink()
 
+
 async def save_cookie(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Save the user's Twitter or Reddit cookie sent via a text file."""
-    await update.message.reply_text("Please send a cookie file named twitter.txt or reddit.txt.")
+    await update.message.reply_text(
+        "Please send a cookie file named twitter.txt or reddit.txt."
+    )
+
 
 async def file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle the received text file."""
     message = update.message
     user_id = message.from_user.id
-    cookie_type = ''
+    cookie_type = ""
 
     file = await context.bot.get_file(message.document)
     temp_cookie_path = Path(tempfile.gettempdir()) / f"{user_id}_cookie.txt"
@@ -146,6 +165,7 @@ async def file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         text="Cookie has been saved.",
     )
 
+
 def store_user_cookie(user_id: int, cookie: str, cookie_type: str) -> None:
     """Store the user's cookie in the SQLite database."""
     with sqlite3.connect(DATABASE_FILE) as conn:
@@ -158,10 +178,14 @@ def store_user_cookie(user_id: int, cookie: str, cookie_type: str) -> None:
         )
         conn.commit()
 
+
 def get_user_cookie(user_id: int, cookie_type: str) -> str:
     """Retrieve the user's cookie from the SQLite database."""
     with sqlite3.connect(DATABASE_FILE) as conn:
-        result = conn.execute("SELECT cookie FROM user_cookies WHERE user_id=? AND cookie_type=?", (user_id, cookie_type)).fetchone()
+        result = conn.execute(
+            "SELECT cookie FROM user_cookies WHERE user_id=? AND cookie_type=?",
+            (user_id, cookie_type),
+        ).fetchone()
 
     if result:
         temp_dir = Path(tempfile.gettempdir())
@@ -169,6 +193,7 @@ def get_user_cookie(user_id: int, cookie_type: str) -> str:
         cookie_file_path.write_text(result[0])
         return str(cookie_file_path)
     return ""
+
 
 def main() -> None:
     """Start the bot."""
@@ -187,7 +212,9 @@ def main() -> None:
         app.add_handler(CommandHandler("set_cookie", save_cookie))
         app.add_handler(MessageHandler(filters.Document.TXT, file_handler))
         app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download_video))
+
         app.run_polling(allowed_updates=Update.ALL_TYPES)
+
 
 if __name__ == "__main__":
     main()
